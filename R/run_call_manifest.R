@@ -36,11 +36,23 @@
   getwd()
 }
 
-.script_dir <- .this_script_dir()
-source(file.path(.script_dir, "validate_call_manifest.R"), chdir = FALSE)
-source(file.path(.script_dir, "drift_metadata.R"), chdir = FALSE)
-source(file.path(.script_dir, "estimate_panel_fe.R"), chdir = FALSE)
-source(file.path(.script_dir, "write_result_manifest.R"), chdir = FALSE)
+# Detect Rscript-mode invocation by presence of `--file=` in commandArgs.
+# During R CMD INSTALL lazy-load, commandArgs() does NOT include `--file=`,
+# so we skip the source() bootstrap (the four sibling functions arrive via
+# the package namespace as R parses each R/*.R file). During `Rscript
+# R/run_call_manifest.R <manifest>`, `--file=R/run_call_manifest.R` IS
+# present and the bootstrap runs.
+.is_rscript_mode <- function() {
+  any(grepl("^--file=", commandArgs(trailingOnly = FALSE), fixed = FALSE))
+}
+
+if (.is_rscript_mode()) {
+  .script_dir <- .this_script_dir()
+  source(file.path(.script_dir, "validate_call_manifest.R"), chdir = FALSE)
+  source(file.path(.script_dir, "drift_metadata.R"), chdir = FALSE)
+  source(file.path(.script_dir, "estimate_panel_fe.R"), chdir = FALSE)
+  source(file.path(.script_dir, "write_result_manifest.R"), chdir = FALSE)
+}
 
 #' @title Write a message to stderr and exit with a given status code.
 #' @description Used by the entrypoint to terminate the process with a
