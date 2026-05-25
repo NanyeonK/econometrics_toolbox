@@ -1,0 +1,71 @@
+template: econometrics_call_manifest
+version: v1
+updated: 2026-05-25
+project: econometrics_toolbox
+phase: phase_2_pilot
+owner: builder_v0_bootstrap
+
+call:
+  call_id: TOY_PANEL_FE_001
+  allowed_reason: "Smoke test of the v0 toolbox against a synthetic balanced panel."
+  source_empirical_plan: "examples/toy_panel_call_manifest.yaml"
+  source_gate_status: "qa/gate_status.yaml"
+  source_spec_grid_manifest: ""
+  source_methodology_spec: ""
+  source_preprocessing_spec: ""
+  backend_language: R
+  r_entrypoint: R/run_call_manifest.R
+
+input:
+  data_path: examples/toy_panel.csv
+  data_hash: ""
+  row_count_before_filter: 30
+  required_columns:
+    - unit_id
+    - time_id
+    - outcome
+    - treatment
+    - control1
+    - control2
+    - industry_fe
+    - cluster_var
+  sample_filter: ""
+  missing_policy: complete_cases
+
+specification:
+  method_family: panel_fe_regression
+  dependent_variable: outcome
+  key_regressor_or_treatment: treatment
+  controls:
+    - control1
+    - control2
+  fixed_effects:
+    - industry_fe
+  weights: ""
+  estimator: fixest_feols
+  covariance_method: clustered
+  cluster_variables:
+    - cluster_var
+  hac_settings:
+    enabled: false
+    lag: null
+    kernel: ""
+
+outputs:
+  result_manifest_path: output/toy_result_manifest.yaml
+  coefficient_table_path: output/toy_coefficients.csv
+  model_summary_path: output/toy_model_summary.txt
+  log_path: ""
+
+forbidden_changes:
+  - outcome
+  - key_regressor_or_treatment
+  - sample_filter
+  - preprocessing_path
+  - controls
+  - fixed_effects
+  - covariance_method
+  - cluster_variables
+
+failure_policy: fail_closed
+decision_log_entry: "v0 bootstrap smoke run"
