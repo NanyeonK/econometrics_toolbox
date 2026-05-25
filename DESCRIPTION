@@ -1,7 +1,7 @@
 Package: econometricstoolbox
 Type: Package
 Title: Deterministic Backend for Manifest-Driven Panel Regression
-Version: 0.1.0
+Version: 0.1.1
 Date: 2026-05-25
 Authors@R: person("Yeonchan", "Lee", email = "nanyeon99@gmail.com",
     role = c("aut", "cre"))
