@@ -156,25 +156,15 @@ drift is acceptable. See `research_system_contract/econometrics_toolbox_contract
 
 `fixest`'s Newey-West (`NW`) vcov requires a panel structure (unit +
 time) when the data contains cross-sectional duplicates per time
-period. The v0 call manifest schema does **not** carry an explicit
-`panel.id` field. As an in-spec latitude, `estimate_panel_fe.R`
-auto-detects panel columns from the loaded data using a small
-conventional-name probe list:
+period. In v1-1, `estimate_panel_fe.R` reads
+`cm$specification$panel$unit` and `cm$specification$panel$time`
+directly from the call manifest. The HAC vcov formula becomes
+`NW(lag = k) ~ time + unit`, using the column names supplied by the
+manifest's `specification.panel` block.
 
-- unit candidates: `unit_id`, `unit`, `id`, `i`
-- time candidates: `time_id`, `time`, `year`, `period`, `t`
-
-The first match in each list wins. If both are found, the HAC vcov
-formula becomes `NW(lag = k) ~ time + unit`; if only a time column is
-found, `NW(lag = k) ~ time`; otherwise the call falls back to bare
-`vcov = "NW"` and `fixest` will treat the data as a single time series
-in row order (and error out fail-closed on duplicates).
-
-This auto-detection is the minimal-impact workaround that did not
-require changing the call-manifest schema, the validator, or the
-result-manifest writer. **It should be elevated to an explicit
-`panel_id` / `time_id` schema field in v1** so the spec lives in the
-manifest rather than in column-name heuristics.
+History: v0 used a column-name heuristic; v1-1 elevated this to an
+explicit `specification.panel` block (breaking change for HAC
+manifests, see NEWS.md).
 
 ## Pipeline isolation
 

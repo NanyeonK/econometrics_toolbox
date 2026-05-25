@@ -145,8 +145,40 @@ declared values. `failure_policy` must be the literal string
 | Value         | Semantics |
 |---------------|-----------|
 | `clustered`   | Cluster-robust SE via `fixest::feols(..., cluster = ~c1 + c2 + ...)`. `cluster_variables` must be non-empty. |
-| `hac`         | Newey-West HAC via `fixest::feols(..., vcov = NW(lag = k) ~ time + unit)`. `hac_settings.enabled` must be `true` and `hac_settings.lag` a positive integer. Panel columns are auto-detected from the data (see `docs/ARCHITECTURE.md` § "HAC code path note"). |
+| `hac`         | Newey-West HAC via `fixest::feols(..., vcov = NW(lag = k) ~ time + unit)`. `hac_settings.enabled` must be `true` and `hac_settings.lag` a positive integer. The `specification.panel` block is REQUIRED (see § "Panel block (required for HAC)" below). |
 | `iid`         | Classical OLS standard errors via `fixest::feols(..., vcov = "iid")`. No cluster or HAC settings needed. |
+
+## Panel block (required for HAC)
+
+The `specification.panel` block names the cross-sectional unit and time
+index columns that fixest needs to construct the Newey-West vcov:
+
+```yaml
+specification:
+  panel:
+    unit: <column name>
+    time: <column name>
+```
+
+The block is REQUIRED whenever `covariance_method: hac`. For
+`covariance_method: clustered` or `covariance_method: iid` it is
+optional and has no behavioural effect — v1-1 emits no warning when it
+is absent on those paths (a future v1 release may add a panel-FE
+heuristic warning, but v1-1 does not).
+
+`panel.unit` and `panel.time` are both column names: each must resolve
+to an actual column in the loaded data file. Validation runs after the
+CSV is read; a name that is not present in the data fails the run with
+a `[VALIDATION ERROR]`.
+
+This is a v0 → v1-1 behaviour change. v0 of the toolbox auto-detected
+panel columns for the HAC code path from a small conventional-name
+probe list (`unit_id|unit|id|i` for the unit axis,
+`time_id|time|year|period|t` for the time axis). v1-1 removes that
+fallback: HAC manifests must declare both columns explicitly under
+`specification.panel`. The toy manifest at
+`examples/toy_panel_call_manifest.yaml` carries the block as the
+canonical example.
 
 ## HAC manifest example
 
@@ -159,6 +191,9 @@ specification:
   key_regressor_or_treatment: treatment
   controls: [control1, control2]
   fixed_effects: []
+  panel:
+    unit: unit_id
+    time: time_id
   weights: ""
   estimator: fixest_feols
   covariance_method: hac
@@ -169,10 +204,10 @@ specification:
     kernel: "Bartlett"        # informational; fixest NW uses Bartlett internally
 ```
 
-The data must contain a recognised time column (`time_id`, `time`,
-`year`, `period`, or `t`) and ideally a unit column (`unit_id`, `unit`,
-`id`, or `i`). Without these, fixest will treat the input as a single
-time series in row order and will error on duplicate time indices.
+The `panel.unit` and `panel.time` columns must both be present in the
+loaded data. The fixest NW vcov formula is built as
+`NW(lag = k) ~ <panel.time> + <panel.unit>` — see
+`docs/ARCHITECTURE.md` § "HAC code path note" for the construction.
 
 ## Exit codes
 
@@ -198,3 +233,5 @@ time series in row order and will error on duplicate time indices.
 | `[VALIDATION ERROR] hac_settings.lag must be a positive integer when hac_settings.enabled is true` | HAC is enabled but `lag` is null, zero, or non-integer. | Set `hac_settings.lag: <positive integer>`, e.g. `lag: 2`. |
 | `[VALIDATION ERROR] cluster_variables must be non-empty when covariance_method is 'clustered'` | `covariance_method: clustered` was declared but `cluster_variables` is empty. | Add at least one cluster column, or switch `covariance_method` to `iid` or `hac`. |
 | `[ESTIMATION ERROR] missing_policy is 'fail_if_any_missing' but NA values found in: <cols>` | Strict missing policy and NAs are present. | Either clean the data upstream, or change `missing_policy` to `complete_cases` / `drop_na_outcome` and re-declare in the spec. |
+| `[VALIDATION ERROR] specification.panel block is required when covariance_method is 'hac'` | HAC was requested but the manifest has no `specification.panel` block (v0 manifests fed unchanged to v1-1 hit this). | Add a `panel:` block under `specification` with `unit:` and `time:` set to the panel-id and time-index column names in your data. See § "Panel block (required for HAC)". |
+| `[VALIDATION ERROR] panel.unit '<col>' not found in data` (or the symmetric `panel.time` message) | `panel.unit` or `panel.time` names a column that does not exist in the loaded CSV. | Correct the column name in `specification.panel.unit` / `specification.panel.time` to match an actual column in the data file. |
