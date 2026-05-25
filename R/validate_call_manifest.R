@@ -129,6 +129,19 @@ validate_call_manifest <- function(cm, df = NULL) {
     }
   }
 
+  if (identical(cov_method, "hac")) {
+    panel <- cm$specification$panel
+    if (is.null(panel) || !is.list(panel)) {
+      stop("[VALIDATION ERROR] specification.panel block is required when covariance_method is 'hac'")
+    }
+    if (!.is_nonempty_string(panel$unit)) {
+      stop("[VALIDATION ERROR] specification.panel.unit must be a non-empty string when covariance_method is 'hac'")
+    }
+    if (!.is_nonempty_string(panel$time)) {
+      stop("[VALIDATION ERROR] specification.panel.time must be a non-empty string when covariance_method is 'hac'")
+    }
+  }
+
   # ---- Group C: output path checks -------------------------------------------
   if (!.is_nonempty_string(cm$outputs$result_manifest_path)) {
     stop("[VALIDATION ERROR] outputs.result_manifest_path is missing or empty")
@@ -183,6 +196,17 @@ validate_call_manifest <- function(cm, df = NULL) {
     if (!is.null(wt) && length(wt) == 1L && nzchar(wt)) {
       if (!(wt %in% cols)) {
         stop(sprintf("[VALIDATION ERROR] weights variable '%s' not found in data", wt))
+      }
+    }
+
+    if (identical(cov_method, "hac")) {
+      if (!(cm$specification$panel$unit %in% cols)) {
+        stop(sprintf("[VALIDATION ERROR] panel.unit '%s' not found in data",
+                     cm$specification$panel$unit))
+      }
+      if (!(cm$specification$panel$time %in% cols)) {
+        stop(sprintf("[VALIDATION ERROR] panel.time '%s' not found in data",
+                     cm$specification$panel$time))
       }
     }
 

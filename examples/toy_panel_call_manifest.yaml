@@ -41,6 +41,9 @@ specification:
     - control2
   fixed_effects:
     - industry_fe
+  panel:
+    unit: unit_id
+    time: time_id
   weights: ""
   estimator: fixest_feols
   covariance_method: clustered

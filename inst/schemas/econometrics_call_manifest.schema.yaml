@@ -55,6 +55,12 @@ sections:
       - { name: key_regressor_or_treatment, type: string, required: true, constraint: "non-empty; must be present in loaded data" }
       - { name: controls, type: "list[string]", required: false, constraint: "each element must be present in loaded data" }
       - { name: fixed_effects, type: "list[string]", required: false, constraint: "each element must be present in loaded data" }
+      - name: panel
+        type: object
+        required_when: "covariance_method == 'hac'"
+        fields:
+          - { name: unit, type: string, required_when: "covariance_method == 'hac'", constraint: "non-empty; must be a column in loaded data" }
+          - { name: time, type: string, required_when: "covariance_method == 'hac'", constraint: "non-empty; must be a column in loaded data" }
       - { name: weights, type: string, required: false, constraint: "if non-empty, must be a column in loaded data" }
       - { name: estimator, type: string, required: true, enum: ["fixest_feols"] }
       - { name: covariance_method, type: string, required: true, enum: ["clustered", "hac", "iid"] }

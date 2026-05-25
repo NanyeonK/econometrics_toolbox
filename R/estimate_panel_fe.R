@@ -189,28 +189,11 @@ estimate_panel_fe <- function(cm, df) {
     clust_fml <- stats::as.formula(paste0("~", paste(clust_vars, collapse = " + ")))
   } else if (identical(cov_method, "hac")) {
     nlag_arg <- as.integer(cm$specification$hac_settings$lag)
-    # fixest::NW requires a panel structure (unit + time) when there are
-    # cross-sectional duplicates per time period. The manifest schema does
-    # not carry an explicit panel.id field, so we deduce it from data
-    # columns using conventional names. Probe in order:
-    #   1. ("unit_id", "time_id") — toy fixture / common convention
-    #   2. ("unit", "time")
-    #   3. ("id", "year") / ("id", "t")
-    # If a (unit, time) pair is found, build vcov = NW(lag=k) ~ time + unit.
-    # If only a time column is present, build vcov = NW(lag=k) ~ time.
-    # Otherwise fall back to plain "NW" with nlag (time-series ordering).
-    data_cols <- colnames(df_filtered)
-    unit_candidates <- c("unit_id", "unit", "id", "i")
-    time_candidates <- c("time_id", "time", "year", "period", "t")
-    unit_col <- unit_candidates[unit_candidates %in% data_cols][1]
-    time_col <- time_candidates[time_candidates %in% data_cols][1]
-    if (!is.na(time_col) && !is.na(unit_col)) {
-      hac_panel_fml <- stats::as.formula(paste0("~", time_col, " + ", unit_col))
-    } else if (!is.na(time_col)) {
-      hac_panel_fml <- stats::as.formula(paste0("~", time_col))
-    } else {
-      hac_panel_fml <- NULL
-    }
+    panel_unit <- cm$specification$panel$unit
+    panel_time <- cm$specification$panel$time
+    hac_panel_fml <- stats::as.formula(
+      paste0("~", panel_time, " + ", panel_unit)
+    )
   }
 
   # Step 6 — weights
@@ -235,35 +218,21 @@ estimate_panel_fe <- function(cm, df) {
             nthreads = 1
           )
         } else if (identical(cov_method, "hac")) {
-          # Build a fixest vcov-request: NW(lag = k) ~ time + unit (or ~ time).
-          # If no panel/time was deduced, fall back to a bare "NW" string and
-          # let fixest treat the data as a single time series in row order.
-          if (!is.null(hac_panel_fml)) {
-            nw_request <- fixest::NW(lag = nlag_arg)
-            # nw_request is a function-call object; combine with the RHS panel
-            # formula using update.formula equivalent: build a formula whose
-            # LHS is the NW(lag=k) request and RHS is the panel spec.
-            nw_full <- stats::as.formula(
-              paste0("NW(lag = ", nlag_arg, ") ~ ",
-                     paste(all.vars(hac_panel_fml), collapse = " + "))
-            )
-            environment(nw_full) <- asNamespace("fixest")
-            fixest::feols(
-              fml,
-              data = df_filtered,
-              vcov = nw_full,
-              weights = wt_arg,
-              nthreads = 1
-            )
-          } else {
-            fixest::feols(
-              fml,
-              data = df_filtered,
-              vcov = "NW",
-              weights = wt_arg,
-              nthreads = 1
-            )
-          }
+          # Build a fixest vcov-request: NW(lag = k) ~ time + unit. The
+          # validator guarantees the panel block is present and that both
+          # columns exist in the data, so no defensive fallback is needed.
+          nw_full <- stats::as.formula(
+            paste0("NW(lag = ", nlag_arg, ") ~ ",
+                   paste(all.vars(hac_panel_fml), collapse = " + "))
+          )
+          environment(nw_full) <- asNamespace("fixest")
+          fixest::feols(
+            fml,
+            data = df_filtered,
+            vcov = nw_full,
+            weights = wt_arg,
+            nthreads = 1
+          )
         } else {
           fixest::feols(
             fml,
