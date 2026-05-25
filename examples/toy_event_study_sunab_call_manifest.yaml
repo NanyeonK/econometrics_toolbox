@@ -1,0 +1,70 @@
+template: econometrics_call_manifest
+version: v2
+updated: 2026-05-25
+project: econometrics_toolbox
+phase: phase_2_pilot
+
+call:
+  call_id: TOY_EVENT_SUNAB_001
+  allowed_reason: "v1-2 smoke"
+  source_empirical_plan: "examples/toy_event_study_sunab_call_manifest.yaml"
+  source_gate_status: qa/gate_status.yaml
+  source_methodology_spec: ""
+  source_preprocessing_spec: ""
+  backend_language: R
+  r_entrypoint: R/run_call_manifest.R
+
+input:
+  data_path: examples/toy_did_panel.csv
+  data_hash: ""
+  row_count_before_filter: 240
+  required_columns:
+    - unit_id
+    - time_id
+    - outcome
+    - cohort
+    - time_to_treat
+  sample_filter: ""
+  missing_policy: complete_cases
+
+specification:
+  method_family: event_study
+  event_study_variant: sun_abraham
+  dependent_variable: outcome
+  key_regressor_or_treatment: time_to_treat
+  cohort_var: cohort
+  time_to_treat_var: time_to_treat
+  never_treated_value: 0
+  controls: []
+  fixed_effects: []
+  panel:
+    unit: unit_id
+    time: time_id
+  weights: ""
+  estimator: fixest_feols
+  covariance_method: clustered
+  cluster_variables:
+    - unit_id
+  hac_settings:
+    enabled: false
+    lag: ~
+    kernel: ""
+
+outputs:
+  result_manifest_path: output/toy_event_study_sunab_result_manifest.yaml
+  coefficient_table_path: output/toy_event_study_sunab_coefficients.csv
+  model_summary_path: output/toy_event_study_sunab_model_summary.txt
+  log_path: ""
+
+forbidden_changes:
+  - outcome
+  - sample_filter
+  - controls
+  - fixed_effects
+  - covariance_method
+  - cluster_variables
+  - event_study_variant
+  - cohort_var
+  - time_to_treat_var
+
+failure_policy: fail_closed

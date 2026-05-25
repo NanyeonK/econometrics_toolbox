@@ -1,0 +1,74 @@
+# NOTE: This manifest is provided as a schema example only.
+# The dchd variant is currently DISABLED at the dispatcher level due to a
+# known upstream bug in DIDmultiplegt v2.1.0. See NEWS.md v0.1.2 known issues.
+# Attempting `Rscript R/run_call_manifest.R <this file>` will exit nonzero
+# with a clear error message until upstream ships a fix and the dispatcher
+# guard in R/run_call_manifest.R is removed.
+
+template: econometrics_call_manifest
+version: v2
+updated: 2026-05-25
+project: econometrics_toolbox
+phase: phase_2_pilot
+
+call:
+  call_id: TOY_DID_DCHD_001
+  allowed_reason: "v1-2 smoke"
+  source_empirical_plan: "examples/toy_did_dchd_call_manifest.yaml"
+  source_gate_status: qa/gate_status.yaml
+  source_methodology_spec: ""
+  source_preprocessing_spec: ""
+  backend_language: R
+  r_entrypoint: R/run_call_manifest.R
+
+input:
+  data_path: examples/toy_did_panel.csv
+  data_hash: ""
+  row_count_before_filter: 240
+  required_columns:
+    - unit_id
+    - time_id
+    - treatment
+    - outcome
+  sample_filter: ""
+  missing_policy: complete_cases
+
+specification:
+  method_family: did
+  did_variant: dchd
+  dependent_variable: outcome
+  treatment_indicator: treatment
+  key_regressor_or_treatment: treatment
+  effects_window: 1
+  placebo_periods: 0
+  controls: []
+  fixed_effects: []
+  panel:
+    unit: unit_id
+    time: time_id
+  weights: ""
+  estimator: ""
+  covariance_method: iid
+  cluster_variables: []
+  hac_settings:
+    enabled: false
+    lag: ~
+    kernel: ""
+
+outputs:
+  result_manifest_path: output/toy_did_dchd_result_manifest.yaml
+  coefficient_table_path: output/toy_did_dchd_coefficients.csv
+  model_summary_path: output/toy_did_dchd_model_summary.txt
+  log_path: ""
+
+forbidden_changes:
+  - outcome
+  - sample_filter
+  - controls
+  - fixed_effects
+  - covariance_method
+  - cluster_variables
+  - did_variant
+  - treatment_indicator
+
+failure_policy: fail_closed
