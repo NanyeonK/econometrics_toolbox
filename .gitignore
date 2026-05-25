@@ -1,0 +1,37 @@
+# R
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+*.Rproj
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Editor
+*~
+*.swp
+*.swo
+
+# Build artifacts
+src/*.o
+src/*.so
+src/*.dll
+
+# Test/check artifacts
+*.Rcheck/
+*_cache/
+*.tar.gz
+*.tgz
+
+# Local output (kept out of vcs by default; output/.gitkeep tracks the dir)
+output/*
+!output/.gitkeep
+
+# Logs
+*.log

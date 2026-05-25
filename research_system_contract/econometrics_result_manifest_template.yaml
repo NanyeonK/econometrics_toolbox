@@ -1,0 +1,57 @@
+template: econometrics_result_manifest
+version: v1
+updated: YYYY-MM-DD
+project: PROJECT_SLUG
+phase: phase_2_pilot
+
+call:
+  call_id: ECON_CALL_001
+  call_manifest_path: ""
+  backend_language: R
+  r_entrypoint: ""
+  r_version: ""
+  package_versions:
+    fixest: ""
+    sandwich: ""
+    lmtest: ""
+    broom: ""
+
+input:
+  data_path: ""
+  data_hash: ""
+  row_count_before_filter: null
+  row_count_used: null
+  dropped_row_count: null
+  drop_reason_summary: []
+
+model:
+  method_family: panel_fe_regression
+  estimator: fixest_feols
+  exact_formula: ""
+  dependent_variable: ""
+  key_regressor_or_treatment: ""
+  controls: []
+  fixed_effects: []
+  weights: ""
+  covariance_method: ""
+  cluster_variables: []
+  hac_settings:
+    enabled: false
+    lag: null
+    kernel: ""
+
+outputs:
+  coefficient_table_path: ""
+  model_summary_path: ""
+  diagnostics_path: ""
+  log_path: ""
+
+warnings: []
+drift_metadata:
+  sample_signature: ""
+  spec_signature: ""
+  inference_signature: ""
+  preprocessing_signature: ""
+
+verdict: PASS
+blocking_reasons: []

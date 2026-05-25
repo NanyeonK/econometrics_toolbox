@@ -1,0 +1,59 @@
+template: econometrics_call_manifest
+version: v1
+updated: YYYY-MM-DD
+project: PROJECT_SLUG
+phase: phase_2_pilot
+owner: AGENT_OR_HUMAN
+
+call:
+  call_id: ECON_CALL_001
+  allowed_reason: ""
+  source_empirical_plan: ""
+  source_gate_status: qa/gate_status.yaml
+  source_spec_grid_manifest: ""
+  source_methodology_spec: ""
+  source_preprocessing_spec: ""
+  backend_language: R
+  r_entrypoint: ""
+
+input:
+  data_path: ""
+  data_hash: ""
+  row_count_before_filter: null
+  required_columns: []
+  sample_filter: ""
+  missing_policy: ""
+
+specification:
+  method_family: panel_fe_regression
+  dependent_variable: ""
+  key_regressor_or_treatment: ""
+  controls: []
+  fixed_effects: []
+  weights: ""
+  estimator: fixest_feols
+  covariance_method: clustered
+  cluster_variables: []
+  hac_settings:
+    enabled: false
+    lag: null
+    kernel: ""
+
+outputs:
+  result_manifest_path: ""
+  coefficient_table_path: ""
+  model_summary_path: ""
+  log_path: ""
+
+forbidden_changes:
+  - outcome
+  - key_regressor_or_treatment
+  - sample_filter
+  - preprocessing_path
+  - controls
+  - fixed_effects
+  - covariance_method
+  - cluster_variables
+
+failure_policy: fail_closed
+decision_log_entry: ""
