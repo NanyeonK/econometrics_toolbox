@@ -63,11 +63,19 @@
 #'   `yaml::write_yaml`. Sets `verdict = "PASS"` and `blocking_reasons = []`
 #'   on success. Creates the parent directory if needed.
 #' @param cm Parsed call manifest list.
-#' @param est_result List returned by `estimate_panel_fe`.
+#' @param est_result List with row counts, drop log, formula string, warnings.
+#'   May come from estimate_panel_fe() or from a v1-2 dispatcher synthesizing
+#'   equivalent fields after calling estimate_did() / estimate_event_study().
 #' @param call_manifest_path Absolute path to the source call manifest YAML.
+#' @param did_results_block Optional list emitted under `did_results` when
+#'   method_family == "did".
+#' @param event_study_results_block Optional list emitted under
+#'   `event_study_results` when method_family == "event_study".
 #' @return `invisible(rm)` — the assembled manifest list.
 #' @noRd
-write_result_manifest <- function(cm, est_result, call_manifest_path) {
+write_result_manifest <- function(cm, est_result, call_manifest_path,
+                                  did_results_block = NULL,
+                                  event_study_results_block = NULL) {
 
   # ---- Drift signatures ------------------------------------------------------
   sample_sig <- compute_sample_signature(
@@ -104,7 +112,7 @@ write_result_manifest <- function(cm, est_result, call_manifest_path) {
 
   rm <- list(
     template = "econometrics_result_manifest",
-    version = "v1",
+    version = "v2",
     updated = format(Sys.time(), "%Y-%m-%d", tz = "UTC"),
     project = .maybe_string(cm$project, ""),
     phase = .maybe_string(cm$phase, ""),
@@ -158,6 +166,14 @@ write_result_manifest <- function(cm, est_result, call_manifest_path) {
     verdict = "PASS",
     blocking_reasons = list()
   )
+
+  # v1-2: append variant-specific blocks if present.
+  if (!is.null(did_results_block)) {
+    rm$did_results <- did_results_block
+  }
+  if (!is.null(event_study_results_block)) {
+    rm$event_study_results <- event_study_results_block
+  }
 
   # Ensure output directory exists.
   out_path <- cm$outputs$result_manifest_path

@@ -52,6 +52,17 @@ if (.is_rscript_mode()) {
   source(file.path(.script_dir, "drift_metadata.R"), chdir = FALSE)
   source(file.path(.script_dir, "estimate_panel_fe.R"), chdir = FALSE)
   source(file.path(.script_dir, "write_result_manifest.R"), chdir = FALSE)
+  # v1-2: shared filter helper + DiD/event-study estimators
+  source(file.path(.script_dir, "apply_data_filter.R"), chdir = FALSE)
+  source(file.path(.script_dir, "estimate_did.R"), chdir = FALSE)
+  source(file.path(.script_dir, "estimate_did_twfe.R"), chdir = FALSE)
+  source(file.path(.script_dir, "estimate_did_sunab.R"), chdir = FALSE)
+  source(file.path(.script_dir, "estimate_did_cs.R"), chdir = FALSE)
+  source(file.path(.script_dir, "estimate_did_dchd.R"), chdir = FALSE)
+  source(file.path(.script_dir, "estimate_did_bjs.R"), chdir = FALSE)
+  source(file.path(.script_dir, "estimate_event_study.R"), chdir = FALSE)
+  source(file.path(.script_dir, "estimate_event_study_classical.R"), chdir = FALSE)
+  source(file.path(.script_dir, "estimate_event_study_sunab.R"), chdir = FALSE)
 }
 
 #' @title Write a message to stderr and exit with a given status code.
@@ -136,22 +147,137 @@ main <- function() {
     }
   )
 
-  est_result <- tryCatch(
-    estimate_panel_fe(cm, df),
-    error = function(e) {
-      .die(conditionMessage(e), status = 1L)
-    }
-  )
+  # ---- Dispatch on method_family (v1-2 final) --------------------------------
+  mf <- cm$specification$method_family
+  if (identical(mf, "panel_fe_regression")) {
+    est_result <- tryCatch(
+      estimate_panel_fe(cm, df),
+      error = function(e) {
+        .die(conditionMessage(e), status = 1L)
+      }
+    )
 
-  tryCatch(
-    write_result_manifest(cm, est_result, abs_manifest_path),
-    error = function(e) {
-      .die(conditionMessage(e), status = 1L)
-    }
-  )
+    tryCatch(
+      write_result_manifest(cm, est_result, abs_manifest_path),
+      error = function(e) {
+        .die(conditionMessage(e), status = 1L)
+      }
+    )
 
-  cat("[SUCCESS] run complete.\n")
-  quit(save = "no", status = 0L, runLast = FALSE)
+    cat("[SUCCESS] run complete.\n")
+    quit(save = "no", status = 0L, runLast = FALSE)
+
+  } else if (identical(mf, "did")) {
+    did_v <- cm$specification$did_variant
+    if (identical(did_v, "callaway_santanna") && !requireNamespace("did", quietly = TRUE)) {
+      .die("[ERROR] required package 'did' is not installed.", status = 1L)
+    }
+    if (identical(did_v, "dchd")) {
+      .die(paste0(
+        "[ERROR] did_variant='dchd' is currently DISABLED in v1-2 due to a known ",
+        "upstream bug in DIDmultiplegt v2.1.0 (returns NaN for the effect statistic ",
+        "even on bundled wagepan_mgt example). Wrapper code is retained at ",
+        "R/estimate_did_dchd.R for future re-enablement once upstream is fixed. ",
+        "See NEWS.md v0.1.2 known issues."), status = 1L)
+    }
+    if (identical(did_v, "bjs") && !requireNamespace("didimputation", quietly = TRUE)) {
+      .die("[ERROR] required package 'didimputation' is not installed.", status = 1L)
+    }
+
+    filt <- tryCatch(apply_data_filter(cm, df),
+                     error = function(e) .die(conditionMessage(e), status = 1L))
+
+    est <- tryCatch(estimate_did(cm, filt$df_filtered),
+                    error = function(e) .die(conditionMessage(e), status = 1L))
+
+    .ensure_dir(cm$outputs$coefficient_table_path)
+    tryCatch(
+      utils::write.csv(est$coefficient_table,
+                       file = cm$outputs$coefficient_table_path,
+                       row.names = FALSE, na = ""),
+      error = function(e) .die(sprintf("[OUTPUT ERROR] failed to write coefficient table: %s",
+                                       conditionMessage(e)), status = 1L)
+    )
+
+    .ensure_dir(cm$outputs$model_summary_path)
+    tryCatch({
+      con <- file(cm$outputs$model_summary_path, open = "wt")
+      on.exit(close(con), add = TRUE)
+      writeLines(est$model_summary_text, con)
+    }, error = function(e) .die(sprintf("[OUTPUT ERROR] failed to write model summary: %s",
+                                        conditionMessage(e)), status = 1L))
+
+    est_result <- list(
+      row_count_before = filt$row_count_before,
+      row_count_used = filt$row_count_used,
+      dropped_row_count = filt$dropped_row_count,
+      drop_reason_summary = filt$drop_reason_summary,
+      exact_formula_str = sprintf("did(%s): %d coefficient rows",
+                                  if (is.null(did_v)) "<unset>" else did_v,
+                                  nrow(est$coefficient_table)),
+      warnings_captured = est$warnings
+    )
+
+    tryCatch(
+      write_result_manifest(cm, est_result, abs_manifest_path,
+                            did_results_block = est$did_results_block,
+                            event_study_results_block = est$event_study_results_block),
+      error = function(e) .die(conditionMessage(e), status = 1L)
+    )
+
+    cat("[SUCCESS] run complete.\n")
+    quit(save = "no", status = 0L, runLast = FALSE)
+
+  } else if (identical(mf, "event_study")) {
+    evs_v <- cm$specification$event_study_variant
+
+    filt <- tryCatch(apply_data_filter(cm, df),
+                     error = function(e) .die(conditionMessage(e), status = 1L))
+
+    est <- tryCatch(estimate_event_study(cm, filt$df_filtered),
+                    error = function(e) .die(conditionMessage(e), status = 1L))
+
+    .ensure_dir(cm$outputs$coefficient_table_path)
+    tryCatch(
+      utils::write.csv(est$coefficient_table,
+                       file = cm$outputs$coefficient_table_path,
+                       row.names = FALSE, na = ""),
+      error = function(e) .die(sprintf("[OUTPUT ERROR] failed to write coefficient table: %s",
+                                       conditionMessage(e)), status = 1L)
+    )
+
+    .ensure_dir(cm$outputs$model_summary_path)
+    tryCatch({
+      con <- file(cm$outputs$model_summary_path, open = "wt")
+      on.exit(close(con), add = TRUE)
+      writeLines(est$model_summary_text, con)
+    }, error = function(e) .die(sprintf("[OUTPUT ERROR] failed to write model summary: %s",
+                                        conditionMessage(e)), status = 1L))
+
+    est_result <- list(
+      row_count_before = filt$row_count_before,
+      row_count_used = filt$row_count_used,
+      dropped_row_count = filt$dropped_row_count,
+      drop_reason_summary = filt$drop_reason_summary,
+      exact_formula_str = sprintf("event_study(%s): %d coefficient rows",
+                                  if (is.null(evs_v)) "<unset>" else evs_v,
+                                  nrow(est$coefficient_table)),
+      warnings_captured = est$warnings
+    )
+
+    tryCatch(
+      write_result_manifest(cm, est_result, abs_manifest_path,
+                            did_results_block = est$did_results_block,
+                            event_study_results_block = est$event_study_results_block),
+      error = function(e) .die(conditionMessage(e), status = 1L)
+    )
+
+    cat("[SUCCESS] run complete.\n")
+    quit(save = "no", status = 0L, runLast = FALSE)
+
+  } else {
+    .die(sprintf("[ESTIMATION ERROR] unknown method_family: %s", mf), status = 1L)
+  }
 }
 
 # Only invoke main() when run as a script, not when sourced.

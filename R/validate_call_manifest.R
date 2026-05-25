@@ -96,11 +96,17 @@ validate_call_manifest <- function(cm, df = NULL) {
   }
 
   # ---- Group B: specification structural checks ------------------------------
-  if (!identical(cm$specification$method_family, "panel_fe_regression")) {
-    stop("[VALIDATION ERROR] specification.method_family must be 'panel_fe_regression'")
+  mf <- cm$specification$method_family
+  if (!.is_nonempty_string(mf) ||
+      !(mf %in% c("panel_fe_regression", "did", "event_study"))) {
+    stop("[VALIDATION ERROR] specification.method_family must be one of: panel_fe_regression, did, event_study")
   }
-  if (!identical(cm$specification$estimator, "fixest_feols")) {
-    stop("[VALIDATION ERROR] specification.estimator must be 'fixest_feols'")
+  # estimator enum is only strict for panel_fe_regression; other families have
+  # their own estimator label conventions (informational), checked by Group E.
+  if (identical(mf, "panel_fe_regression")) {
+    if (!identical(cm$specification$estimator, "fixest_feols")) {
+      stop("[VALIDATION ERROR] specification.estimator must be 'fixest_feols'")
+    }
   }
   if (!.is_nonempty_string(cm$specification$dependent_variable)) {
     stop("[VALIDATION ERROR] specification.dependent_variable is missing or empty")
@@ -217,5 +223,177 @@ validate_call_manifest <- function(cm, df = NULL) {
     }
   }
 
+  # ---- Group E: method_family + variant validation (v1-2) --------------------
+  # Runs after Group D so it can also reference df when supplied. Returns
+  # invisibly if all checks pass; stops on first violation per existing
+  # validator convention.
+  errs <- validate_group_e(cm, df)
+  if (length(errs) > 0L) {
+    stop(errs[[1L]])
+  }
+
   invisible(TRUE)
+}
+
+#' @title Group E: method-family + variant validation (v1-2).
+#' @description Enforces did/event_study variant requirements per spec.md §4.
+#'   Group A's enum check on method_family is assumed to have already run; this
+#'   helper does not re-emit that error. Returns a character vector of error
+#'   messages (empty = pass). Stops at first violation per existing convention,
+#'   so the returned vector contains 0 or 1 element.
+#' @param cm Parsed call manifest list.
+#' @param df Optional data.frame for column-presence and domain checks (E7/E8).
+#' @return character(0) on pass, otherwise length-1 character with the error.
+#' @noRd
+validate_group_e <- function(cm, df = NULL) {
+  mf <- cm$specification$method_family
+  # Group A guarantees mf is in the allowed enum; if not, return empty (Group A
+  # already errored). Defensive: if Group A is bypassed in tests, treat
+  # unrecognised mf as "no E checks to run".
+  if (!.is_nonempty_string(mf) ||
+      !(mf %in% c("panel_fe_regression", "did", "event_study"))) {
+    return(character(0))
+  }
+
+  did_v   <- cm$specification$did_variant
+  evs_v   <- cm$specification$event_study_variant
+  cohort  <- cm$specification$cohort_var
+  ttt     <- cm$specification$time_to_treat_var
+  treat   <- cm$specification$treatment_indicator
+
+  did_enum <- c("twfe", "sun_abraham", "callaway_santanna", "dchd", "bjs")
+  evs_enum <- c("classical", "sun_abraham")
+
+  # E2: did requires did_variant in enum
+  if (identical(mf, "did")) {
+    if (!.is_nonempty_string(did_v) || !(did_v %in% did_enum)) {
+      return(paste0(
+        "[VALIDATION ERROR] specification.did_variant missing or not in enum ",
+        "{twfe, sun_abraham, callaway_santanna, dchd, bjs}"))
+    }
+  }
+
+  # E3: event_study requires event_study_variant in enum
+  if (identical(mf, "event_study")) {
+    if (!.is_nonempty_string(evs_v) || !(evs_v %in% evs_enum)) {
+      return(paste0(
+        "[VALIDATION ERROR] specification.event_study_variant missing or not in enum ",
+        "{classical, sun_abraham}"))
+    }
+  }
+
+  # E4: mismatch — variant set but family does not match
+  if (.is_nonempty_string(did_v) && !identical(mf, "did")) {
+    return(sprintf(
+      "[VALIDATION ERROR] method_family.mismatch: did_variant=%s incompatible with method_family=%s",
+      did_v, mf))
+  }
+  if (.is_nonempty_string(evs_v) && !identical(mf, "event_study")) {
+    return(sprintf(
+      "[VALIDATION ERROR] method_family.mismatch: event_study_variant=%s incompatible with method_family=%s",
+      evs_v, mf))
+  }
+
+  # E5: per-variant required-field matrix
+  variant_required <- function(family, variant) {
+    if (identical(family, "did")) {
+      switch(variant,
+        twfe              = "treatment_indicator",
+        sun_abraham       = "cohort_var",
+        callaway_santanna = "cohort_var",
+        dchd              = "treatment_indicator",
+        bjs               = "cohort_var",
+        NULL
+      )
+    } else if (identical(family, "event_study")) {
+      switch(variant,
+        classical    = "time_to_treat_var",
+        sun_abraham  = "cohort_var",
+        NULL
+      )
+    } else {
+      NULL
+    }
+  }
+
+  variant <- if (identical(mf, "did")) did_v
+             else if (identical(mf, "event_study")) evs_v
+             else NULL
+  req_field <- variant_required(mf, variant)
+  if (!is.null(req_field)) {
+    req_val <- cm$specification[[req_field]]
+    if (!.is_nonempty_string(req_val)) {
+      return(sprintf(
+        "[VALIDATION ERROR] specification.%s required for %s/%s",
+        req_field, mf, variant))
+    }
+  }
+
+  # E6: panel.unit / panel.time required when method_family in {did, event_study}
+  if (mf %in% c("did", "event_study")) {
+    panel <- cm$specification$panel
+    if (is.null(panel) || !is.list(panel) ||
+        !.is_nonempty_string(panel$unit)) {
+      return(sprintf(
+        "[VALIDATION ERROR] specification.panel.unit required for method_family=%s",
+        mf))
+    }
+    if (!.is_nonempty_string(panel$time)) {
+      return(sprintf(
+        "[VALIDATION ERROR] specification.panel.time required for method_family=%s",
+        mf))
+    }
+  }
+
+  # E9 (type-check only): reference_periods, when present, must be coercible to
+  # a vector of integers.
+  ref_p <- cm$specification$reference_periods
+  if (!is.null(ref_p)) {
+    rp_vec <- tryCatch(suppressWarnings(as.integer(unlist(ref_p, use.names = FALSE))),
+                       error = function(e) NA_integer_)
+    if (any(is.na(rp_vec))) {
+      return("[VALIDATION ERROR] specification.reference_periods must be a list of integers")
+    }
+  }
+
+  # E7 + E8: column-presence + treatment_indicator domain (need df)
+  if (!is.null(df)) {
+    cols <- colnames(df)
+    required_cols <- .char_vec(cm$input$required_columns)
+    variant_fields <- list(
+      cohort_var          = cohort,
+      time_to_treat_var   = ttt,
+      treatment_indicator = treat
+    )
+    for (fname in names(variant_fields)) {
+      v <- variant_fields[[fname]]
+      if (.is_nonempty_string(v)) {
+        if (!(v %in% cols)) {
+          return(sprintf(
+            "[VALIDATION ERROR] specification.%s='%s' not present in loaded data",
+            fname, v))
+        }
+        if (!(v %in% required_cols)) {
+          return(sprintf(
+            "[VALIDATION ERROR] specification.%s='%s' not declared in required_columns",
+            fname, v))
+        }
+      }
+    }
+    # E8: treatment_indicator domain {0, 1, NA}
+    if (.is_nonempty_string(treat) && (treat %in% cols)) {
+      col_vals <- df[[treat]]
+      ok_vals <- is.na(col_vals) | (suppressWarnings(as.numeric(col_vals)) %in% c(0, 1))
+      if (!all(ok_vals)) {
+        return(sprintf(
+          "[VALIDATION ERROR] specification.treatment_indicator='%s' has values outside {0,1}",
+          treat))
+      }
+    }
+  }
+
+  # E10: control_group / anticipation_periods only meaningful for cs/bjs —
+  # validator silently accepts on others (belt-and-suspenders).
+
+  character(0)
 }
