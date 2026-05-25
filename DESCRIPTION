@@ -1,0 +1,26 @@
+Package: econometricstoolbox
+Type: Package
+Title: Deterministic Backend for Manifest-Driven Panel Regression
+Version: 0.1.0
+Date: 2026-05-25
+Authors@R: person("Yeonchan", "Lee", email = "nanyeon99@gmail.com",
+    role = c("aut", "cre"))
+Description: A fail-closed R backend for panel fixed-effects regression
+    invoked by an external empirical execution layer. The package reads a
+    YAML call manifest, validates it strictly, runs fixest::feols exactly
+    as declared, and emits a result manifest with package versions, row
+    counts, and four SHA-256 drift signatures. Identical inputs produce
+    byte-identical coefficient output.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Imports:
+    fixest (>= 0.11.0),
+    yaml (>= 2.3.0),
+    jsonlite (>= 1.8.0),
+    sandwich,
+    lmtest,
+    digest
+Suggests:
+    broom,
+    testthat (>= 3.0.0)
