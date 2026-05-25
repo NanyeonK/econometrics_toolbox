@@ -8,6 +8,13 @@ fixed effects, clustering, or inclusion of robustness checks. v0 is scoped
 to panel OLS / fixed-effects regression with clustered or HAC (Newey-West)
 standard errors via `fixest::feols`.
 
+v1-2 (0.1.2) extends the backend with difference-in-differences (TWFE,
+Sun-Abraham, Callaway-Sant'Anna, BJS) and event-study (classical,
+Sun-Abraham) estimators. See `docs/USAGE.md` for per-variant call-manifest
+structures. The de Chaisemartin-d'Haultfœuille variant is wired but
+currently disabled pending an upstream fix; see `NEWS.md` v0.1.2 known
+issues for details.
+
 ## What it is
 
 - An R-only execution backend for a single econometric primitive
@@ -74,9 +81,15 @@ R convention); the on-disk directory is `econometrics_toolbox`.
 Install the runtime R dependencies (CRAN), then run the toy manifest:
 
 ```bash
-Rscript -e 'install.packages(c("fixest","sandwich","lmtest","yaml","jsonlite","testthat","digest"), repos="https://cloud.r-project.org")'
+Rscript -e 'install.packages(c("fixest","sandwich","lmtest","yaml","jsonlite","testthat","digest","did","DIDmultiplegt","didimputation"), repos="https://cloud.r-project.org")'
 Rscript R/run_call_manifest.R examples/toy_panel_call_manifest.yaml
 ```
+
+The v0 dependencies (`fixest`, `sandwich`, `lmtest`, `yaml`, `jsonlite`,
+`testthat`, `digest`) remain required. v1-2 adds three more as Imports:
+`did` (Callaway-Sant'Anna), `DIDmultiplegt` (de Chaisemartin-d'Haultfœuille
+— currently disabled at the dispatcher level, see `NEWS.md` v0.1.2), and
+`didimputation` (Borusyak-Jaravel-Spiess).
 
 A successful run prints `[SUCCESS] run complete.` to stdout and exits 0.
 

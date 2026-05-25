@@ -209,6 +209,168 @@ loaded data. The fixest NW vcov formula is built as
 `NW(lag = k) ~ <panel.time> + <panel.unit>` — see
 `docs/ARCHITECTURE.md` § "HAC code path note" for the construction.
 
+## DiD estimators (method_family: did)
+
+The toolbox supports four active DiD variants plus one currently-disabled one.
+All DiD manifests use `method_family: did` and add `did_variant: <variant>`
+plus variant-specific fields under `specification`.
+
+### TWFE (`did_variant: twfe`)
+
+Classical two-way fixed-effects DiD via `fixest::feols(y ~ treatment_indicator | unit + time)`.
+Required: `dependent_variable`, `treatment_indicator`, `panel.unit`, `panel.time`.
+Optional: `controls`, `cluster_variables` (under `clustered` covariance method).
+
+```yaml
+specification:
+  method_family: did
+  did_variant: twfe
+  dependent_variable: outcome
+  treatment_indicator: treatment
+  panel: {unit: unit_id, time: time_id}
+  controls: [control1]
+  covariance_method: clustered
+  cluster_variables: [unit_id]
+```
+
+### Sun-Abraham (`did_variant: sun_abraham`)
+
+Interaction-weighted estimator via `fixest::sunab(cohort, time_to_treat)`.
+Robust to heterogeneous treatment effects. Reports an aggregate ATT AND
+per-(cohort, event-time) dynamic coefficients (the latter land in
+`event_study_results` block of the result manifest).
+
+Required: `dependent_variable`, `treatment_indicator`, `cohort_var`,
+`time_to_treat_var`, `panel.unit`, `panel.time`. `never_treated_value`
+optional (toolbox recodes to `Inf` per fixest convention).
+
+```yaml
+specification:
+  method_family: did
+  did_variant: sun_abraham
+  dependent_variable: outcome
+  treatment_indicator: treatment
+  cohort_var: cohort
+  time_to_treat_var: time_to_treat
+  never_treated_value: 0
+  panel: {unit: unit_id, time: time_id}
+  covariance_method: clustered
+  cluster_variables: [unit_id]
+```
+
+### Callaway-Sant'Anna (`did_variant: callaway_santanna`)
+
+Group-time ATT via `did::att_gt()` aggregated to overall ATT via
+`did::aggte(type = "simple")`. Bootstrap is disabled for determinism;
+analytic SEs are used.
+
+Required: `dependent_variable`, `treatment_indicator`, `cohort_var`
+(= "g", first-treated period; 0 for never-treated), `panel.unit`, `panel.time`.
+Optional: `control_group` (default `"notyettreated"`), `anticipation_periods`
+(default 0).
+
+```yaml
+specification:
+  method_family: did
+  did_variant: callaway_santanna
+  dependent_variable: outcome
+  treatment_indicator: treatment
+  cohort_var: cohort
+  control_group: notyettreated
+  anticipation_periods: 0
+  panel: {unit: unit_id, time: time_id}
+  covariance_method: iid
+```
+
+### dCdH (`did_variant: dchd`) — DISABLED
+
+The de Chaisemartin-d'Haultfœuille variant is wired through the dispatcher
+but is currently DISABLED due to a known upstream bug in `DIDmultiplegt`
+v2.1.0. Running a `dchd` manifest exits 1 with a clear error pointing to
+NEWS.md v0.1.2 known issues. The wrapper code at `R/estimate_did_dchd.R`
+will be re-enabled once upstream ships a fix.
+
+### BJS (`did_variant: bjs`)
+
+Borusyak-Jaravel-Spiess imputation estimator via `didimputation::did_imputation()`.
+
+Required: `dependent_variable`, `cohort_var`, `panel.unit`, `panel.time`.
+Optional: `horizon` (FALSE for static overall ATT; TRUE/integer-vector for
+dynamics), `pretrends` (default FALSE).
+
+```yaml
+specification:
+  method_family: did
+  did_variant: bjs
+  dependent_variable: outcome
+  cohort_var: cohort
+  horizon: false
+  pretrends: false
+  panel: {unit: unit_id, time: time_id}
+  covariance_method: iid
+```
+
+### DiD variant comparison
+
+| Variant            | R function                       | Heterogeneous-effects robust? | Output shape                           |
+|--------------------|----------------------------------|-------------------------------|----------------------------------------|
+| `twfe`             | `fixest::feols`                  | No (bias under heterogeneity) | Single ATT row                         |
+| `sun_abraham`      | `fixest::feols + sunab`          | Yes                           | Aggregate ATT + per-(cohort, k) rows   |
+| `callaway_santanna`| `did::att_gt + aggte`            | Yes                           | One row per (g, t) ATT + overall ATT   |
+| `dchd` (disabled)  | `DIDmultiplegt::did_multiplegt`  | Yes                           | Single ATT (static)                    |
+| `bjs`              | `didimputation::did_imputation`  | Yes                           | One row per horizon (or overall)       |
+
+## Event-study estimators (method_family: event_study)
+
+Event-study manifests use `method_family: event_study` and pick a variant.
+Both variants emit per-(event time `k`) dynamic coefficients into the
+result manifest's `event_study_results` block.
+
+### Classical (`event_study_variant: classical`)
+
+`fixest::feols(y ~ i(time_to_treat_var, ref = -1) | unit + time)`.
+Required: `dependent_variable`, `time_to_treat_var`, `panel.unit`, `panel.time`.
+Optional: `reference_periods` (default `[-1]`), `controls`, `cluster_variables`.
+
+```yaml
+specification:
+  method_family: event_study
+  event_study_variant: classical
+  dependent_variable: outcome
+  time_to_treat_var: time_to_treat
+  reference_periods: [-1]
+  panel: {unit: unit_id, time: time_id}
+  covariance_method: clustered
+  cluster_variables: [unit_id]
+```
+
+### Sun-Abraham (`event_study_variant: sun_abraham`)
+
+`fixest::sunab(...)` returning the cohort-averaged dynamic ATT(k) only
+(no aggregate). Same required fields as the DiD `sun_abraham` variant.
+Use this when you want only the event-study trace, not the aggregate.
+
+```yaml
+specification:
+  method_family: event_study
+  event_study_variant: sun_abraham
+  dependent_variable: outcome
+  cohort_var: cohort
+  time_to_treat_var: time_to_treat
+  never_treated_value: 0
+  panel: {unit: unit_id, time: time_id}
+  covariance_method: clustered
+  cluster_variables: [unit_id]
+```
+
+### Relationship: DiD Sun-Abraham vs ES Sun-Abraham
+
+The DiD Sun-Abraham variant reports BOTH an aggregate ATT (in `did_results`)
+AND per-(cohort, k) dynamic coefficients (in `event_study_results`). The ES
+Sun-Abraham variant reports ONLY cohort-averaged dynamic coefficients. Pick
+the DiD version if you want both numbers in one call; pick the ES version if
+you want just the dynamics.
+
 ## Exit codes
 
 | Situation                                              | Exit code |
@@ -235,3 +397,6 @@ loaded data. The fixest NW vcov formula is built as
 | `[ESTIMATION ERROR] missing_policy is 'fail_if_any_missing' but NA values found in: <cols>` | Strict missing policy and NAs are present. | Either clean the data upstream, or change `missing_policy` to `complete_cases` / `drop_na_outcome` and re-declare in the spec. |
 | `[VALIDATION ERROR] specification.panel block is required when covariance_method is 'hac'` | HAC was requested but the manifest has no `specification.panel` block (v0 manifests fed unchanged to v1-1 hit this). | Add a `panel:` block under `specification` with `unit:` and `time:` set to the panel-id and time-index column names in your data. See § "Panel block (required for HAC)". |
 | `[VALIDATION ERROR] panel.unit '<col>' not found in data` (or the symmetric `panel.time` message) | `panel.unit` or `panel.time` names a column that does not exist in the loaded CSV. | Correct the column name in `specification.panel.unit` / `specification.panel.time` to match an actual column in the data file. |
+| `did_variant is empty (validator should have caught this)` | Call manifest sets `method_family: did` but `did_variant` is empty or missing. | Add the variant: one of `twfe`, `sun_abraham`, `callaway_santanna`, `dchd` (disabled in v1-2), `bjs`. |
+| `event_study_variant is empty` | Same situation for `method_family: event_study`. | Add `event_study_variant: classical` or `event_study_variant: sun_abraham`. |
+| `dchd' is currently DISABLED in v1-2 due to a known upstream bug` | The dCdH variant is intentionally gated at the dispatcher. | See NEWS.md v0.1.2 known issues for context; pick another DiD variant for now. Re-enablement tracked for v1-3. |

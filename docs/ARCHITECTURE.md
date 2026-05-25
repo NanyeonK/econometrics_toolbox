@@ -166,6 +166,64 @@ History: v0 used a column-name heuristic; v1-1 elevated this to an
 explicit `specification.panel` block (breaking change for HAC
 manifests, see NEWS.md).
 
+## v1-2: method_family dispatch
+
+`R/run_call_manifest.R` switches on `cm$specification$method_family` after
+validation + data load + filter:
+
+```
+panel_fe_regression  →  estimate_panel_fe()                        (v0/v1-1, unchanged)
+did                  →  estimate_did(cm, df_filtered)              (v1-2 new)
+event_study          →  estimate_event_study(cm, df_filtered)      (v1-2 new)
+```
+
+`estimate_did()` and `estimate_event_study()` are thin dispatchers (in
+`R/estimate_did.R` and `R/estimate_event_study.R`) that route by
+`did_variant` / `event_study_variant` to one of nine variant-specific files:
+
+- `R/estimate_did_twfe.R` — fixest::feols
+- `R/estimate_did_sunab.R` — fixest::sunab (aggregate + dynamic)
+- `R/estimate_did_cs.R` — did::att_gt + did::aggte
+- `R/estimate_did_dchd.R` — DIDmultiplegt (currently disabled at dispatcher)
+- `R/estimate_did_bjs.R` — didimputation::did_imputation
+- `R/estimate_event_study_classical.R` — fixest::feols(... | i(time_to_treat))
+- `R/estimate_event_study_sunab.R` — fixest::sunab (dynamic only)
+
+All variant helpers follow the same return contract:
+
+```r
+list(
+  coefficient_table         = <data.frame: term, estimate, std_error, statistic,
+                                 p_value, conf_low, conf_high, group, time, event_time>,
+  model_summary_text        = <character>,
+  did_results_block         = <list or NULL>,
+  event_study_results_block = <list or NULL>,
+  warnings                  = <character vector>
+)
+```
+
+The dispatcher writes the coefficient CSV + model summary text file using the
+manifest-declared paths, then calls `write_result_manifest(cm, est_result,
+abs_manifest_path, did_results_block = ..., event_study_results_block = ...)`
+which emits the v2 result manifest with optional `did_results` /
+`event_study_results` top-level blocks.
+
+## Schema versions
+
+Both call manifest and result manifest now declare `version: v2` (was `v1` in
+v0/v1-1). The schema additions are strictly backward compatible: v0/v1-1
+manifests parse as `method_family: panel_fe_regression` and run unchanged.
+
+## Open issues (v1-3 candidates)
+
+- `did_variant: dchd` is gated at the dispatcher. Upstream `DIDmultiplegt`
+  v2.1.0 has a known NaN bug. Either upstream fixes or we add an internal
+  port; either way, re-enablement is a v1-3 candidate.
+- DiD callaway_santanna does not currently expose `bstrap = TRUE` /
+  multiplier-bootstrap CI options. Add manifest controls in a follow-up.
+- BJS dynamics (`horizon` non-FALSE) are supported but not yet covered in
+  the toy fixture.
+
 ## Pipeline isolation
 
 This repository was bootstrapped by statsclaw under explicit isolation
