@@ -160,6 +160,9 @@ test_that("MP-03 fail_if_any_missing_policy: nonzero exit when any NA present", 
 })
 
 # ---------- HC-01 ------------------------------------------------------------
+# v1-1 update: HAC manifests now require an explicit specification.panel block
+# (unit + time). We inject the panel block here so HC-01 remains a HAC happy-path
+# smoke test alongside PB-04 below (which exercises the new contract directly).
 test_that("HC-01 hac_run: HAC manifest runs successfully with lag=2", {
   td <- withr::local_tempdir()
   m <- make_manifest(
@@ -172,6 +175,7 @@ test_that("HC-01 hac_run: HAC manifest runs successfully with lag=2", {
     hac_lag = 2L,
     hac_kernel = "Bartlett"
   )
+  m$specification$panel <- list(unit = "unit_id", time = "time_id")
   mf <- write_temp_manifest(m, "hc01")
   res <- run_entrypoint(mf)
   expect_equal(res$exit_code, 0,
@@ -187,6 +191,128 @@ test_that("HC-01 hac_run: HAC manifest runs successfully with lag=2", {
   expect_equal(rm$model$covariance_method, "hac")
   expect_true(isTRUE(rm$model$hac_settings$enabled))
   expect_equal(as.integer(rm$model$hac_settings$lag), 2L)
+})
+
+# ---------- PB-01 ------------------------------------------------------------
+# v1-1: HAC without any panel block must fail validation. Asserts on the
+# breaking-change contract introduced by the schema explicit-panel-block update.
+test_that("PB-01 hac_without_panel_block: nonzero exit; error mentions panel", {
+  td <- withr::local_tempdir()
+  m <- make_manifest(
+    data_path = toy_data_path(),
+    out_dir = td,
+    covariance_method = "hac",
+    cluster_variables = list(),
+    fixed_effects = list(),
+    hac_enabled = TRUE,
+    hac_lag = 2L,
+    hac_kernel = "Bartlett"
+  )
+  # Explicitly do NOT set m$specification$panel.
+  mf <- write_temp_manifest(m, "pb01")
+  res <- run_entrypoint(mf)
+  expect_gt(res$exit_code, 0)
+  expect_true(grepl("[VALIDATION ERROR]", res$stderr, fixed = TRUE),
+              info = paste("stderr was:", res$stderr))
+  expect_true(grepl("panel", res$stderr, ignore.case = TRUE),
+              info = paste("stderr was:", res$stderr))
+})
+
+# ---------- PB-02 ------------------------------------------------------------
+# v1-1: HAC with panel.unit pointing at a column not present in the data must
+# fail validation. Message should reference the bad column or panel.unit.
+test_that("PB-02 hac_with_bad_panel_unit: nonzero exit; error references bad unit column", {
+  td <- withr::local_tempdir()
+  m <- make_manifest(
+    data_path = toy_data_path(),
+    out_dir = td,
+    covariance_method = "hac",
+    cluster_variables = list(),
+    fixed_effects = list(),
+    hac_enabled = TRUE,
+    hac_lag = 2L,
+    hac_kernel = "Bartlett"
+  )
+  m$specification$panel <- list(
+    unit = "nonexistent_unit_col",
+    time = "time_id"
+  )
+  mf <- write_temp_manifest(m, "pb02")
+  res <- run_entrypoint(mf)
+  expect_gt(res$exit_code, 0)
+  expect_true(grepl("[VALIDATION ERROR]", res$stderr, fixed = TRUE),
+              info = paste("stderr was:", res$stderr))
+  expect_true(
+    grepl("nonexistent_unit_col", res$stderr, fixed = TRUE) ||
+      grepl("panel.unit", res$stderr, fixed = TRUE) ||
+      grepl("panel\\.unit", res$stderr) ||
+      (grepl("panel", res$stderr, ignore.case = TRUE) &&
+         grepl("unit", res$stderr, ignore.case = TRUE)),
+    info = paste("stderr was:", res$stderr)
+  )
+})
+
+# ---------- PB-03 ------------------------------------------------------------
+# v1-1: HAC with panel.time pointing at a column not present in the data must
+# fail validation. Message should reference the bad column or panel.time.
+test_that("PB-03 hac_with_bad_panel_time: nonzero exit; error references bad time column", {
+  td <- withr::local_tempdir()
+  m <- make_manifest(
+    data_path = toy_data_path(),
+    out_dir = td,
+    covariance_method = "hac",
+    cluster_variables = list(),
+    fixed_effects = list(),
+    hac_enabled = TRUE,
+    hac_lag = 2L,
+    hac_kernel = "Bartlett"
+  )
+  m$specification$panel <- list(
+    unit = "unit_id",
+    time = "nonexistent_time_col"
+  )
+  mf <- write_temp_manifest(m, "pb03")
+  res <- run_entrypoint(mf)
+  expect_gt(res$exit_code, 0)
+  expect_true(grepl("[VALIDATION ERROR]", res$stderr, fixed = TRUE),
+              info = paste("stderr was:", res$stderr))
+  expect_true(
+    grepl("nonexistent_time_col", res$stderr, fixed = TRUE) ||
+      grepl("panel.time", res$stderr, fixed = TRUE) ||
+      grepl("panel\\.time", res$stderr) ||
+      (grepl("panel", res$stderr, ignore.case = TRUE) &&
+         grepl("time", res$stderr, ignore.case = TRUE)),
+    info = paste("stderr was:", res$stderr)
+  )
+})
+
+# ---------- PB-04 ------------------------------------------------------------
+# v1-1 happy path: HAC with valid panel block runs successfully and writes both
+# coefficient CSV (with at least one data row) and a non-empty model summary.
+test_that("PB-04 hac_with_valid_panel_block: exit 0; coef CSV and summary written", {
+  td <- withr::local_tempdir()
+  m <- make_manifest(
+    data_path = toy_data_path(),
+    out_dir = td,
+    covariance_method = "hac",
+    cluster_variables = list(),
+    fixed_effects = list(),
+    hac_enabled = TRUE,
+    hac_lag = 2L,
+    hac_kernel = "Bartlett"
+  )
+  m$specification$panel <- list(unit = "unit_id", time = "time_id")
+  mf <- write_temp_manifest(m, "pb04")
+  res <- run_entrypoint(mf)
+  expect_equal(res$exit_code, 0,
+               info = paste("stderr:", res$stderr))
+  # Coefficient CSV exists and has at least one data row.
+  expect_true(file.exists(m$outputs$coefficient_table_path))
+  coefs <- read.csv(m$outputs$coefficient_table_path, stringsAsFactors = FALSE)
+  expect_gte(nrow(coefs), 1L)
+  # Model summary exists and is non-empty.
+  expect_true(file.exists(m$outputs$model_summary_path))
+  expect_gt(file.info(m$outputs$model_summary_path)$size, 0)
 })
 
 # ---------- FG-02 ------------------------------------------------------------
