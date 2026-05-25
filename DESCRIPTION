@@ -1,7 +1,7 @@
 Package: econometricstoolbox
 Type: Package
 Title: Deterministic Backend for Manifest-Driven Panel Regression
-Version: 0.1.1
+Version: 0.1.2
 Date: 2026-05-25
 Authors@R: person("Yeonchan", "Lee", email = "nanyeon99@gmail.com",
     role = c("aut", "cre"))
@@ -20,7 +20,10 @@ Imports:
     jsonlite (>= 1.8.0),
     sandwich,
     lmtest,
-    digest
+    digest,
+    did,
+    DIDmultiplegt,
+    didimputation
 Suggests:
     broom,
     testthat (>= 3.0.0)

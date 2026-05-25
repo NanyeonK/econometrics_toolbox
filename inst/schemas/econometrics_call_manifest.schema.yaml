@@ -1,10 +1,10 @@
 schema_name: econometrics_call_manifest
-schema_version: v1
+schema_version: v2
 description: >
   Documentation schema for the call manifest consumed by run_call_manifest.R.
   Field-level types, required flags, and enum constraints are enumerated here
   for human reading and future schema-validator tooling. Not a JSON Schema v4
-  document.
+  document. v2 adds method_family routing for did/event_study families.
 
 header:
   - name: template
@@ -50,17 +50,43 @@ sections:
 
   specification:
     fields:
-      - { name: method_family, type: string, required: true, enum: ["panel_fe_regression"] }
+      - { name: method_family, type: string, required: true,
+          enum: ["panel_fe_regression", "did", "event_study"] }
+      - { name: did_variant, type: string,
+          required_when: "method_family == 'did'",
+          enum: ["twfe", "sun_abraham", "callaway_santanna", "dchd", "bjs"] }
+      - { name: event_study_variant, type: string,
+          required_when: "method_family == 'event_study'",
+          enum: ["classical", "sun_abraham"] }
+      - { name: cohort_var, type: string,
+          required_when: "did_variant in ['sun_abraham','callaway_santanna','bjs'] OR event_study_variant == 'sun_abraham'",
+          constraint: "must be in loaded data" }
+      - { name: time_to_treat_var, type: string,
+          required_when: "event_study_variant == 'classical'",
+          constraint: "must be in loaded data" }
+      - { name: treatment_indicator, type: string,
+          required_when: "did_variant in ['twfe','dchd']",
+          constraint: "must be in loaded data; values in {0,1}" }
+      - { name: never_treated_value, type: "numeric|string", required: false,
+          constraint: "sentinel value used in cohort_var for never-treated units;
+          helper translates per-package" }
+      - { name: reference_periods, type: "list[integer]", required: false,
+          constraint: "defaults to [-1] for classical event-study" }
+      - { name: control_group, type: string, required: false,
+          enum: ["nevertreated", "notyettreated"],
+          constraint: "callaway_santanna only; default nevertreated" }
+      - { name: anticipation_periods, type: integer, required: false,
+          constraint: "non-negative; default 0" }
       - { name: dependent_variable, type: string, required: true, constraint: "non-empty; must be present in loaded data" }
       - { name: key_regressor_or_treatment, type: string, required: true, constraint: "non-empty; must be present in loaded data" }
       - { name: controls, type: "list[string]", required: false, constraint: "each element must be present in loaded data" }
       - { name: fixed_effects, type: "list[string]", required: false, constraint: "each element must be present in loaded data" }
       - name: panel
         type: object
-        required_when: "covariance_method == 'hac'"
+        required_when: "method_family in ['did','event_study'] OR covariance_method == 'hac'"
         fields:
-          - { name: unit, type: string, required_when: "covariance_method == 'hac'", constraint: "non-empty; must be a column in loaded data" }
-          - { name: time, type: string, required_when: "covariance_method == 'hac'", constraint: "non-empty; must be a column in loaded data" }
+          - { name: unit, type: string, required_when: "method_family in ['did','event_study'] OR covariance_method == 'hac'", constraint: "non-empty; must be a column in loaded data" }
+          - { name: time, type: string, required_when: "method_family in ['did','event_study'] OR covariance_method == 'hac'", constraint: "non-empty; must be a column in loaded data" }
       - { name: weights, type: string, required: false, constraint: "if non-empty, must be a column in loaded data" }
       - { name: estimator, type: string, required: true, enum: ["fixest_feols"] }
       - { name: covariance_method, type: string, required: true, enum: ["clustered", "hac", "iid"] }

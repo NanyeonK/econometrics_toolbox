@@ -1,5 +1,5 @@
 schema_name: econometrics_result_manifest
-schema_version: v1
+schema_version: v2
 description: >
   Documentation schema for the result manifest written by run_call_manifest.R.
   Fields, types, and sources are enumerated below for human reading and future
@@ -63,10 +63,35 @@ sections:
       - { name: diagnostics_path, type: string, note: "empty string in v0" }
       - { name: log_path, type: string }
 
+  did_results:
+    present_when: "method_family == 'did'"
+    fields:
+      - { name: did_variant, type: string }
+      - { name: aggregation, type: string,
+          note: "e.g. simple | cohort | group_time | dynamic | imputation" }
+      - { name: att_overall, type: numeric }
+      - { name: att_overall_se, type: numeric }
+      - { name: att_overall_p, type: numeric }
+      - { name: group_time_att_path, type: string,
+          note: "CSV path; empty string for twfe" }
+      - { name: control_group, type: string, optional: true }
+      - { name: anticipation_periods, type: integer, optional: true }
+      - { name: never_treated_value, type: "numeric|string", optional: true }
+
+  event_study_results:
+    present_when: "method_family == 'event_study'"
+    fields:
+      - { name: event_study_variant, type: string }
+      - { name: leads_lags_path, type: string,
+          note: "CSV path; same shape as coefficient table, terms tau_<k>" }
+      - { name: reference_periods_used, type: "list[integer]" }
+      - { name: cohort_var, type: string, optional: true }
+      - { name: time_to_treat_var, type: string, optional: true }
+
   drift_metadata:
     fields:
       - { name: sample_signature, type: string, source: "SHA-256 hex of canonical JSON of (data_hash, row_count_used, sample_filter)" }
-      - { name: spec_signature, type: string, source: "SHA-256 hex of canonical JSON of (controls, dependent_variable, estimator, fixed_effects, key_regressor_or_treatment, method_family, weights)" }
+      - { name: spec_signature, type: string, source: "SHA-256 hex of canonical JSON of (controls, dependent_variable, estimator, fixed_effects, key_regressor_or_treatment, method_family, weights); when method_family != 'panel_fe_regression', signature input also includes the variant + variant-specific fields (did_variant, event_study_variant, cohort_var, time_to_treat_var, treatment_indicator, reference_periods, control_group, anticipation_periods)" }
       - { name: inference_signature, type: string, source: "SHA-256 hex of canonical JSON of (cluster_variables, covariance_method, hac_settings)" }
       - { name: preprocessing_signature, type: string, source: "SHA-256 hex of canonical JSON of (missing_policy, source_preprocessing_spec)" }
 
@@ -83,3 +108,6 @@ coefficient_table_columns:
   - { name: p_value, type: numeric }
   - { name: conf_low, type: numeric }
   - { name: conf_high, type: numeric }
+  - { name: group, type: numeric, optional: true }
+  - { name: time, type: numeric, optional: true }
+  - { name: event_time, type: integer, optional: true }
