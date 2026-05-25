@@ -1,0 +1,85 @@
+schema_name: econometrics_result_manifest
+schema_version: v1
+description: >
+  Documentation schema for the result manifest written by run_call_manifest.R.
+  Fields, types, and sources are enumerated below for human reading and future
+  schema-validator tooling.
+
+header:
+  - { name: template, type: string, value: "econometrics_result_manifest" }
+  - { name: version, type: string, value: "v1" }
+  - { name: updated, type: string, source: "ISO date at run time" }
+  - { name: project, type: string, source: "copied from call manifest" }
+  - { name: phase, type: string, source: "copied from call manifest" }
+
+sections:
+  call:
+    fields:
+      - { name: call_id, type: string, source: "copied from cm" }
+      - { name: call_manifest_path, type: string, source: "absolute path to call manifest YAML" }
+      - { name: backend_language, type: string, value: "R" }
+      - { name: r_entrypoint, type: string, source: "copied from cm" }
+      - { name: r_version, type: string, source: "R.version.string" }
+      - name: package_versions
+        type: object
+        fields:
+          - { name: fixest, type: string }
+          - { name: sandwich, type: string }
+          - { name: lmtest, type: string }
+          - { name: broom, type: string, note: "'not_installed' when broom is absent" }
+
+  input:
+    fields:
+      - { name: data_path, type: string, source: "copied from cm" }
+      - { name: data_hash, type: string, source: "copied from cm (may be empty)" }
+      - { name: row_count_before_filter, type: integer, source: "nrow(df)" }
+      - { name: row_count_used, type: integer, source: "nrow(df_filtered)" }
+      - { name: dropped_row_count, type: integer }
+      - { name: drop_reason_summary, type: "list[string]" }
+
+  model:
+    fields:
+      - { name: method_family, type: string }
+      - { name: estimator, type: string }
+      - { name: exact_formula, type: string, source: "deparse(formula(fit))" }
+      - { name: dependent_variable, type: string }
+      - { name: key_regressor_or_treatment, type: string }
+      - { name: controls, type: "list[string]" }
+      - { name: fixed_effects, type: "list[string]" }
+      - { name: weights, type: string }
+      - { name: covariance_method, type: string }
+      - { name: cluster_variables, type: "list[string]" }
+      - name: hac_settings
+        type: object
+        fields:
+          - { name: enabled, type: boolean }
+          - { name: lag, type: "integer|null" }
+          - { name: kernel, type: string }
+
+  outputs:
+    fields:
+      - { name: coefficient_table_path, type: string }
+      - { name: model_summary_path, type: string }
+      - { name: diagnostics_path, type: string, note: "empty string in v0" }
+      - { name: log_path, type: string }
+
+  drift_metadata:
+    fields:
+      - { name: sample_signature, type: string, source: "SHA-256 hex of canonical JSON of (data_hash, row_count_used, sample_filter)" }
+      - { name: spec_signature, type: string, source: "SHA-256 hex of canonical JSON of (controls, dependent_variable, estimator, fixed_effects, key_regressor_or_treatment, method_family, weights)" }
+      - { name: inference_signature, type: string, source: "SHA-256 hex of canonical JSON of (cluster_variables, covariance_method, hac_settings)" }
+      - { name: preprocessing_signature, type: string, source: "SHA-256 hex of canonical JSON of (missing_policy, source_preprocessing_spec)" }
+
+top_level_extras:
+  - { name: warnings, type: "list[string]" }
+  - { name: verdict, type: string, value: "PASS on success" }
+  - { name: blocking_reasons, type: "list[string]", value: "[] on success" }
+
+coefficient_table_columns:
+  - { name: term, type: string }
+  - { name: estimate, type: numeric }
+  - { name: std_error, type: numeric }
+  - { name: statistic, type: numeric }
+  - { name: p_value, type: numeric }
+  - { name: conf_low, type: numeric }
+  - { name: conf_high, type: numeric }

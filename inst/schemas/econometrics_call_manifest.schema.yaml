@@ -1,0 +1,92 @@
+schema_name: econometrics_call_manifest
+schema_version: v1
+description: >
+  Documentation schema for the call manifest consumed by run_call_manifest.R.
+  Field-level types, required flags, and enum constraints are enumerated here
+  for human reading and future schema-validator tooling. Not a JSON Schema v4
+  document.
+
+header:
+  - name: template
+    type: string
+    required: true
+  - name: version
+    type: string
+    required: true
+  - name: updated
+    type: string
+    required: true
+  - name: project
+    type: string
+    required: true
+  - name: phase
+    type: string
+    required: true
+  - name: owner
+    type: string
+    required: true
+
+sections:
+  call:
+    fields:
+      - { name: call_id, type: string, required: true, constraint: non-empty }
+      - { name: allowed_reason, type: string, required: true, constraint: non-empty }
+      - { name: source_empirical_plan, type: string, required: true, constraint: non-empty }
+      - { name: source_gate_status, type: string, required: true, constraint: non-empty }
+      - { name: source_spec_grid_manifest, type: string, required: false }
+      - { name: source_methodology_spec, type: string, required: false }
+      - { name: source_preprocessing_spec, type: string, required: false }
+      - { name: backend_language, type: string, required: true, enum: ["R"] }
+      - { name: r_entrypoint, type: string, required: true, constraint: "non-empty; file must exist on disk" }
+
+  input:
+    fields:
+      - { name: data_path, type: string, required: true, constraint: "non-empty; file must exist on disk" }
+      - { name: data_hash, type: string, required: false }
+      - { name: row_count_before_filter, type: "integer|null", required: false }
+      - { name: required_columns, type: "list[string]", required: true, constraint: "non-empty; every element must be present in loaded data" }
+      - { name: sample_filter, type: string, required: false, constraint: "valid R expression or empty string" }
+      - { name: missing_policy, type: string, required: true, enum: ["complete_cases", "drop_na_outcome", "fail_if_any_missing"] }
+
+  specification:
+    fields:
+      - { name: method_family, type: string, required: true, enum: ["panel_fe_regression"] }
+      - { name: dependent_variable, type: string, required: true, constraint: "non-empty; must be present in loaded data" }
+      - { name: key_regressor_or_treatment, type: string, required: true, constraint: "non-empty; must be present in loaded data" }
+      - { name: controls, type: "list[string]", required: false, constraint: "each element must be present in loaded data" }
+      - { name: fixed_effects, type: "list[string]", required: false, constraint: "each element must be present in loaded data" }
+      - { name: weights, type: string, required: false, constraint: "if non-empty, must be a column in loaded data" }
+      - { name: estimator, type: string, required: true, enum: ["fixest_feols"] }
+      - { name: covariance_method, type: string, required: true, enum: ["clustered", "hac", "iid"] }
+      - { name: cluster_variables, type: "list[string]", required_when: "covariance_method == 'clustered'", constraint: "non-empty when required; each element must be in loaded data" }
+      - name: hac_settings
+        type: object
+        fields:
+          - { name: enabled, type: boolean, required: true }
+          - { name: lag, type: "integer|null", required_when: "hac_settings.enabled == true", constraint: "positive integer when required" }
+          - { name: kernel, type: string, required: false, constraint: "informational; no behavioural effect in v0" }
+
+  outputs:
+    fields:
+      - { name: result_manifest_path, type: string, required: true, constraint: "non-empty; parent directory must exist or be creatable" }
+      - { name: coefficient_table_path, type: string, required: true, constraint: non-empty }
+      - { name: model_summary_path, type: string, required: true, constraint: non-empty }
+      - { name: log_path, type: string, required: false }
+
+  forbidden_changes:
+    type: "list[string]"
+    required: true
+    constraint: "non-empty list"
+    standard_values:
+      - outcome
+      - key_regressor_or_treatment
+      - sample_filter
+      - preprocessing_path
+      - controls
+      - fixed_effects
+      - covariance_method
+      - cluster_variables
+
+top_level_extras:
+  - { name: failure_policy, type: string, required: true, enum: ["fail_closed"] }
+  - { name: decision_log_entry, type: string, required: false }
